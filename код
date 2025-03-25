@@ -1,0 +1,635 @@
+import logging
+import random
+import telebot
+from telebot import types
+from typing import Dict, List
+
+# Настройка логирования
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# Категории блюд
+CATEGORIES: Dict[str, str] = {
+    "main": "Основные блюда",
+    "soup": "Супы",
+    "salad": "Салаты",
+    "dessert": "Десерты",
+    "breakfast": "Завтраки",
+    "snack": "Закуски"
+}
+
+# Время приготовления
+COOKING_TIME: Dict[str, str] = {
+    "fast": "До 30 минут",
+    "medium": "30-60 минут",
+    "long": "Более 60 минут"
+}
+
+# База данных рецептов
+SAMPLE_RECIPES: Dict[str, Dict] = {
+    "Паста Карбонара": {
+        "category": "main",
+        "cooking_time": "medium",
+        "portions": 4,
+        "ingredients": [
+            {"name": "Спагетти", "amount": 400, "unit": "г"},
+            {"name": "Бекон", "amount": 200, "unit": "г"},
+            {"name": "Яйца", "amount": 4, "unit": "шт"},
+            {"name": "Пармезан", "amount": 100, "unit": "г"},
+            {"name": "Черный перец", "amount": 2, "unit": "ч.л."},
+            {"name": "Соль", "amount": 1, "unit": "по вкусу"}
+        ],
+        "steps": [
+            "Отварить спагетти в подсоленной воде до состояния аль денте",
+            "Нарезать бекон и обжарить до хрустящей корочки",
+            "Смешать яйца с тертым пармезаном и перцем",
+            "Смешать горячую пасту с беконом",
+            "Добавить яичную смесь и быстро перемешать",
+            "Подавать сразу же, посыпав дополнительным пармезаном"
+        ]
+    },
+    "Стейк Рибай": {
+        "category": "main",
+        "cooking_time": "medium",
+        "portions": 2,
+        "ingredients": [
+            {"name": "Стейк Рибай", "amount": 400, "unit": "г"},
+            {"name": "Соль", "amount": 1, "unit": "по вкусу"},
+            {"name": "Черный перец", "amount": 1, "unit": "по вкусу"},
+            {"name": "Розмарин", "amount": 2, "unit": "веточки"},
+            {"name": "Чеснок", "amount": 2, "unit": "зубчика"},
+            {"name": "Сливочное масло", "amount": 30, "unit": "г"}
+        ],
+        "steps": [
+            "Достать стейк из холодильника за 30 минут до готовки",
+            "Натереть стейк солью и перцем",
+            "Разогреть сковороду до высокой температуры",
+            "Обжарить стейк по 3-4 минуты с каждой стороны",
+            "Добавить чеснок, розмарин и масло",
+            "Поливать стейк маслом 2-3 минуты",
+            "Дать стейку отдохнуть 5 минут перед подачей"
+        ]
+    },
+    "Борщ": {
+        "category": "soup",
+        "cooking_time": "long",
+        "portions": 6,
+        "ingredients": [
+            {"name": "Говядина", "amount": 500, "unit": "г"},
+            {"name": "Свекла", "amount": 300, "unit": "г"},
+            {"name": "Капуста", "amount": 300, "unit": "г"},
+            {"name": "Картофель", "amount": 400, "unit": "г"},
+            {"name": "Морковь", "amount": 200, "unit": "г"},
+            {"name": "Лук", "amount": 200, "unit": "г"},
+            {"name": "Томатная паста", "amount": 2, "unit": "ст.л."},
+            {"name": "Чеснок", "amount": 3, "unit": "зубчика"},
+            {"name": "Соль", "amount": 1, "unit": "по вкусу"},
+            {"name": "Перец", "amount": 1, "unit": "по вкусу"},
+            {"name": "Лавровый лист", "amount": 2, "unit": "шт"}
+        ],
+        "steps": [
+            "Сварить бульон из говядины",
+            "Нарезать свеклу соломкой и потушить с томатной пастой",
+            "Нарезать овощи: картофель кубиками, капусту соломкой",
+            "Обжарить лук и морковь",
+            "В кипящий бульон добавить картофель",
+            "Через 10 минут добавить капусту",
+            "Добавить свеклу и зажарку из лука и моркови",
+            "Варить до готовности",
+            "В конце добавить чеснок, соль, перец и лавровый лист",
+            "Дать настояться 15-20 минут"
+        ]
+    },
+    "Том Ям": {
+        "category": "soup",
+        "cooking_time": "medium",
+        "portions": 4,
+        "ingredients": [
+            {"name": "Креветки", "amount": 400, "unit": "г"},
+            {"name": "Кокосовое молоко", "amount": 400, "unit": "мл"},
+            {"name": "Грибы", "amount": 200, "unit": "г"},
+            {"name": "Лимонная трава", "amount": 2, "unit": "стебля"},
+            {"name": "Лаймовые листья", "amount": 4, "unit": "шт"},
+            {"name": "Имбирь", "amount": 30, "unit": "г"},
+            {"name": "Перец чили", "amount": 2, "unit": "шт"},
+            {"name": "Лайм", "amount": 1, "unit": "шт"},
+            {"name": "Рыбный соус", "amount": 2, "unit": "ст.л."}
+        ],
+        "steps": [
+            "Вскипятить воду с лимонной травой, листьями лайма и имбирем",
+            "Добавить грибы и варить 5 минут",
+            "Влить кокосовое молоко",
+            "Добавить креветки и варить 3-4 минуты",
+            "Добавить рыбный соус и сок лайма",
+            "Подавать с нарезанным перцем чили"
+        ]
+    },
+    "Цезарь": {
+        "category": "salad",
+        "cooking_time": "fast",
+        "portions": 2,
+        "ingredients": [
+            {"name": "Куриное филе", "amount": 200, "unit": "г"},
+            {"name": "Салат Романо", "amount": 100, "unit": "г"},
+            {"name": "Помидоры черри", "amount": 100, "unit": "г"},
+            {"name": "Хлебные гренки", "amount": 50, "unit": "г"},
+            {"name": "Пармезан", "amount": 30, "unit": "г"},
+            {"name": "Соус Цезарь", "amount": 2, "unit": "ст.л."}
+        ],
+        "steps": [
+            "Обжарить куриное филе до золотистой корочки",
+            "Нарезать салат крупными кусками",
+            "Разрезать помидоры черри пополам",
+            "Смешать все ингредиенты в большой миске",
+            "Заправить соусом Цезарь",
+            "Посыпать тертым пармезаном и гренками"
+        ]
+    },
+    "Греческий салат": {
+        "category": "salad",
+        "cooking_time": "fast",
+        "portions": 4,
+        "ingredients": [
+            {"name": "Помидоры", "amount": 4, "unit": "шт"},
+            {"name": "Огурцы", "amount": 2, "unit": "шт"},
+            {"name": "Красный лук", "amount": 1, "unit": "шт"},
+            {"name": "Оливки", "amount": 100, "unit": "г"},
+            {"name": "Сыр фета", "amount": 200, "unit": "г"},
+            {"name": "Оливковое масло", "amount": 3, "unit": "ст.л."},
+            {"name": "Орегано", "amount": 1, "unit": "ч.л."}
+        ],
+        "steps": [
+            "Нарезать помидоры и огурцы крупными кусками",
+            "Нарезать лук полукольцами",
+            "Смешать все овощи в миске",
+            "Добавить оливки и нарезанный кубиками сыр фета",
+            "Заправить оливковым маслом и посыпать орегано"
+        ]
+    },
+    "Омлет": {
+        "category": "breakfast",
+        "cooking_time": "fast",
+        "portions": 2,
+        "ingredients": [
+            {"name": "Яйца", "amount": 4, "unit": "шт"},
+            {"name": "Молоко", "amount": 50, "unit": "мл"},
+            {"name": "Соль", "amount": 1, "unit": "по вкусу"},
+            {"name": "Перец", "amount": 1, "unit": "по вкусу"},
+            {"name": "Масло сливочное", "amount": 20, "unit": "г"}
+        ],
+        "steps": [
+            "Взбить яйца с молоком, солью и перцем",
+            "Разогреть сковороду и растопить масло",
+            "Вылить яичную смесь на сковороду",
+            "Готовить на среднем огне 3-4 минуты",
+            "Сложить омлет пополам и дать постоять 1 минуту"
+        ]
+    },
+    "Сырники": {
+        "category": "breakfast",
+        "cooking_time": "medium",
+        "portions": 4,
+        "ingredients": [
+            {"name": "Творог", "amount": 500, "unit": "г"},
+            {"name": "Яйца", "amount": 2, "unit": "шт"},
+            {"name": "Мука", "amount": 100, "unit": "г"},
+            {"name": "Сахар", "amount": 50, "unit": "г"},
+            {"name": "Ванильный сахар", "amount": 1, "unit": "ч.л."},
+            {"name": "Масло растительное", "amount": 50, "unit": "мл"}
+        ],
+        "steps": [
+            "Протереть творог через сито",
+            "Добавить яйца, сахар и ванильный сахар",
+            "Постепенно всыпать муку и замесить тесто",
+            "Сформировать сырники",
+            "Обвалять в муке",
+            "Обжарить на растительном масле до золотистой корочки"
+        ]
+    },
+    "Тирамису": {
+        "category": "dessert",
+        "cooking_time": "medium",
+        "portions": 6,
+        "ingredients": [
+            {"name": "Печенье савоярди", "amount": 200, "unit": "г"},
+            {"name": "Сыр маскарпоне", "amount": 500, "unit": "г"},
+            {"name": "Яйца", "amount": 4, "unit": "шт"},
+            {"name": "Сахар", "amount": 100, "unit": "г"},
+            {"name": "Кофе", "amount": 200, "unit": "мл"},
+            {"name": "Какао", "amount": 2, "unit": "ст.л."}
+        ],
+        "steps": [
+            "Сварить крепкий кофе и остудить",
+            "Взбить желтки с сахаром до белого цвета",
+            "Добавить маскарпоне и взбить до однородности",
+            "Взбить белки до устойчивых пиков",
+            "Аккуратно соединить белковую массу с кремом",
+            "Обмакнуть печенье в кофе",
+            "Выложить слой печенья, слой крема",
+            "Повторить слои",
+            "Посыпать какао",
+            "Охладить минимум 4 часа"
+        ]
+    },
+    "Чизкейк": {
+        "category": "dessert",
+        "cooking_time": "long",
+        "portions": 8,
+        "ingredients": [
+            {"name": "Творожный сыр", "amount": 600, "unit": "г"},
+            {"name": "Сметана", "amount": 200, "unit": "г"},
+            {"name": "Яйца", "amount": 4, "unit": "шт"},
+            {"name": "Сахар", "amount": 150, "unit": "г"},
+            {"name": "Печенье", "amount": 200, "unit": "г"},
+            {"name": "Масло сливочное", "amount": 100, "unit": "г"},
+            {"name": "Ванильный экстракт", "amount": 1, "unit": "ч.л."}
+        ],
+        "steps": [
+            "Измельчить печенье и смешать с растопленным маслом",
+            "Выложить в форму и утрамбовать",
+            "Взбить творожный сыр с сахаром",
+            "Добавить яйца по одному, взбивая после каждого",
+            "Добавить сметану и ванильный экстракт",
+            "Вылить начинку на корж",
+            "Выпекать 1 час при 160°C",
+            "Охладить в духовке 1 час",
+            "Убрать в холодильник на ночь"
+        ]
+    },
+    "Брускетта": {
+        "category": "snack",
+        "cooking_time": "fast",
+        "portions": 4,
+        "ingredients": [
+            {"name": "Хлеб", "amount": 8, "unit": "ломтиков"},
+            {"name": "Помидоры", "amount": 4, "unit": "шт"},
+            {"name": "Чеснок", "amount": 2, "unit": "зубчика"},
+            {"name": "Базилик", "amount": 10, "unit": "листьев"},
+            {"name": "Оливковое масло", "amount": 4, "unit": "ст.л."},
+            {"name": "Соль", "amount": 1, "unit": "по вкусу"}
+        ],
+        "steps": [
+            "Поджарить хлеб на гриле или в тостере",
+            "Натереть чесноком каждый ломтик",
+            "Нарезать помидоры кубиками",
+            "Выложить помидоры на хлеб",
+            "Посыпать нарезанным базиликом",
+            "Сбрызнуть оливковым маслом",
+            "Посолить по вкусу"
+        ]
+    },
+    "Гуакамоле": {
+        "category": "snack",
+        "cooking_time": "fast",
+        "portions": 4,
+        "ingredients": [
+            {"name": "Авокадо", "amount": 2, "unit": "шт"},
+            {"name": "Лайм", "amount": 1, "unit": "шт"},
+            {"name": "Помидор", "amount": 1, "unit": "шт"},
+            {"name": "Лук", "amount": 0.5, "unit": "шт"},
+            {"name": "Кинза", "amount": 10, "unit": "г"},
+            {"name": "Соль", "amount": 1, "unit": "по вкусу"},
+            {"name": "Перец", "amount": 1, "unit": "по вкусу"}
+        ],
+        "steps": [
+            "Размять мякоть авокадо вилкой",
+            "Добавить сок лайма",
+            "Нарезать помидор, лук и кинзу",
+            "Смешать все ингредиенты",
+            "Посолить и поперчить по вкусу",
+            "Подавать с чипсами или хлебом"
+        ]
+    }
+}
+
+# Проверка наличия необходимых данных
+if not CATEGORIES or not COOKING_TIME or not SAMPLE_RECIPES:
+    raise ValueError("Отсутствуют необходимые данные")
+
+# Инициализация бота
+try:
+    bot = telebot.TeleBot('7304858182:AAF2XHdpeVeTs0mVXn33oaOCG8O7Rdw8Fhk')
+    logger.info("Бот успешно инициализирован")
+except Exception as e:
+    logger.error(f"Ошибка при инициализации бота: {e}")
+    raise
+
+def get_main_keyboard():
+    """Создание главной клавиатуры"""
+    keyboard = types.InlineKeyboardMarkup(row_width=2)
+    keyboard.add(
+        types.InlineKeyboardButton("🔍 Поиск по названию", callback_data="search"),
+        types.InlineKeyboardButton("📋 Все рецепты", callback_data="all_recipes")
+    )
+    keyboard.add(
+        types.InlineKeyboardButton("📑 Категории", callback_data="category"),
+        types.InlineKeyboardButton("⏱ Время приготовления", callback_data="time")
+    )
+    keyboard.add(
+        types.InlineKeyboardButton("🎲 Случайный рецепт", callback_data="random"),
+        types.InlineKeyboardButton("❓ Помощь", callback_data="help")
+    )
+    return keyboard
+
+def format_recipe(name: str, recipe: dict) -> str:
+    """Форматирование рецепта для вывода"""
+    try:
+        category_name = CATEGORIES.get(recipe["category"], "Неизвестная категория")
+        cooking_time_name = COOKING_TIME.get(recipe["cooking_time"], "Неизвестное время")
+        
+        # Заголовок
+        text = f"🍳 {name}\n\n"
+        text += f"Категория: {category_name}\n"
+        text += f"Время приготовления: {cooking_time_name}\n"
+        text += f"Порций: {recipe['portions']}\n\n"
+        
+        # Ингредиенты
+        text += "📝 Ингредиенты:\n"
+        for ing in recipe["ingredients"]:
+            text += f"• {ing['name']}: {ing['amount']} {ing['unit']}\n"
+        
+        # Шаги приготовления
+        text += "\n👩‍🍳 Приготовление:\n"
+        for i, step in enumerate(recipe["steps"], 1):
+            text += f"{i}. {step}\n"
+        
+        return text
+    except Exception as e:
+        logger.error(f"Ошибка при форматировании рецепта {name}: {e}")
+        return f"Ошибка при форматировании рецепта {name}. Пожалуйста, попробуйте другой рецепт."
+
+@bot.message_handler(commands=['start'])
+def start(message):
+    """Обработчик команды /start"""
+    welcome_text = (
+        "👋 Привет! Я бот для поиска рецептов.\n\n"
+        "У меня есть рецепты в следующих категориях:\n"
+        "• Основные блюда\n"
+        "• Супы\n"
+        "• Салаты\n"
+        "• Десерты\n"
+        "• Завтраки\n"
+        "• Закуски\n\n"
+        "Вы можете найти рецепты:\n"
+        "• по названию блюда\n"
+        "• по категории\n"
+        "• по времени приготовления\n"
+        "• получить случайный рецепт\n\n"
+        "Выберите, что вас интересует:"
+    )
+    bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_keyboard())
+
+@bot.message_handler(commands=['help'])
+def help_command(message):
+    """Обработчик команды /help"""
+    help_text = """
+❓ Помощь по использованию бота
+
+Вы можете найти рецепты следующими способами:
+
+1. 🔍 Поиск по названию - введите название блюда
+2. 📑 Категории - выберите категорию блюда
+3. ⏱ Время приготовления - выберите подходящее время
+4. 🎲 Случайный рецепт - получите случайный рецепт
+
+Для каждого рецепта вы получите:
+• Список ингредиентов с граммовками
+• Пошаговую инструкцию приготовления
+• Время приготовления
+• Количество порций
+
+Команды:
+/start - Начать сначала
+/help - Показать эту справку
+
+Для отмены поиска нажмите кнопку "« Назад"
+"""
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton("« Назад", callback_data="back"))
+    bot.send_message(message.chat.id, help_text, reply_markup=keyboard)
+
+@bot.callback_query_handler(func=lambda call: True)
+def callback_handler(call):
+    """Обработчик всех callback запросов от инлайн-кнопок"""
+    try:
+        if call.data == "back":
+            bot.edit_message_text(
+                "Выберите действие:",
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=get_main_keyboard()
+            )
+
+        elif call.data == "all_recipes":
+            text = "📋 Доступные рецепты:\n\n"
+            for category in CATEGORIES.values():
+                text += f"📑 {category}:\n"
+                for name, recipe in SAMPLE_RECIPES.items():
+                    if CATEGORIES[recipe["category"]] == category:
+                        text += f"• {name}\n"
+                text += "\n"
+            
+            keyboard = types.InlineKeyboardMarkup(row_width=1)
+            for name in SAMPLE_RECIPES.keys():
+                keyboard.add(types.InlineKeyboardButton(name, callback_data=f"recipe_{name}"))
+            keyboard.add(types.InlineKeyboardButton("« Назад", callback_data="back"))
+            
+            bot.edit_message_text(
+                text,
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=keyboard
+            )
+
+        elif call.data == "search":
+            keyboard = types.InlineKeyboardMarkup()
+            keyboard.add(types.InlineKeyboardButton("« Назад", callback_data="back"))
+            bot.edit_message_text(
+                "🔍 Введите название блюда, которое хотите найти:\n\n"
+                "Для отмены поиска нажмите кнопку «Назад»",
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=keyboard
+            )
+            bot.register_next_step_handler(call.message, search_recipe)
+
+        elif call.data == "category":
+            keyboard = types.InlineKeyboardMarkup(row_width=1)
+            for code, name in CATEGORIES.items():
+                keyboard.add(types.InlineKeyboardButton(name, callback_data=f"category_{code}"))
+            keyboard.add(types.InlineKeyboardButton("« Назад", callback_data="back"))
+            bot.edit_message_text(
+                "📑 Выберите категорию блюда:",
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=keyboard
+            )
+
+        elif call.data == "time":
+            keyboard = types.InlineKeyboardMarkup(row_width=1)
+            for code, name in COOKING_TIME.items():
+                keyboard.add(types.InlineKeyboardButton(name, callback_data=f"time_{code}"))
+            keyboard.add(types.InlineKeyboardButton("« Назад", callback_data="back"))
+            bot.edit_message_text(
+                "⏱ Выберите время приготовления:",
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=keyboard
+            )
+
+        elif call.data.startswith(("category_", "time_")):
+            filter_type, value = call.data.split("_")
+            recipes = []
+            
+            for name, recipe in SAMPLE_RECIPES.items():
+                if recipe[filter_type] == value:
+                    recipes.append(name)
+            
+            if recipes:
+                keyboard = types.InlineKeyboardMarkup(row_width=1)
+                for recipe in recipes:
+                    keyboard.add(types.InlineKeyboardButton(recipe, callback_data=f"recipe_{recipe}"))
+                keyboard.add(types.InlineKeyboardButton("« Назад", callback_data="back"))
+                
+                text = "Найдены следующие рецепты:\n\n"
+                for recipe in recipes:
+                    text += f"• {recipe}\n"
+                
+                bot.edit_message_text(
+                    text,
+                    call.message.chat.id,
+                    call.message.message_id,
+                    reply_markup=keyboard
+                )
+            else:
+                keyboard = types.InlineKeyboardMarkup()
+                keyboard.add(types.InlineKeyboardButton("« Назад", callback_data="back"))
+                bot.edit_message_text(
+                    "К сожалению, рецептов не найдено.",
+                    call.message.chat.id,
+                    call.message.message_id,
+                    reply_markup=keyboard
+                )
+
+        elif call.data.startswith("recipe_"):
+            recipe_name = call.data[7:]  # Убираем префикс "recipe_"
+            if recipe_name in SAMPLE_RECIPES:
+                recipe_text = format_recipe(recipe_name, SAMPLE_RECIPES[recipe_name])
+                keyboard = types.InlineKeyboardMarkup()
+                keyboard.add(types.InlineKeyboardButton("« Назад", callback_data="back"))
+                bot.edit_message_text(
+                    recipe_text,
+                    call.message.chat.id,
+                    call.message.message_id,
+                    reply_markup=keyboard
+                )
+
+        elif call.data == "random":
+            recipe_name = random.choice(list(SAMPLE_RECIPES.keys()))
+            recipe_text = format_recipe(recipe_name, SAMPLE_RECIPES[recipe_name])
+            keyboard = types.InlineKeyboardMarkup()
+            keyboard.add(types.InlineKeyboardButton("« Назад", callback_data="back"))
+            bot.edit_message_text(
+                f"🎲 Случайный рецепт:\n\n{recipe_text}",
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=keyboard
+            )
+
+        elif call.data == "help":
+            help_command(call.message)
+
+        # Подтверждаем обработку callback-запроса
+        bot.answer_callback_query(call.id)
+
+    except Exception as e:
+        logger.error(f"Ошибка в обработке callback: {e}")
+        try:
+            bot.answer_callback_query(call.id, "Произошла ошибка. Попробуйте еще раз.")
+            keyboard = types.InlineKeyboardMarkup()
+            keyboard.add(types.InlineKeyboardButton("« В главное меню", callback_data="back"))
+            bot.edit_message_text(
+                "Произошла ошибка. Вернитесь в главное меню и попробуйте снова.",
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=keyboard
+            )
+        except:
+            pass
+
+def search_recipe(message):
+    """Функция поиска рецепта по названию"""
+    try:
+        # Проверяем, не является ли сообщение командой
+        if message.text.startswith('/'):
+            return
+
+        search_query = message.text.lower().strip()
+        
+        # Проверяем на пустой запрос
+        if not search_query:
+            bot.reply_to(message, "Пожалуйста, введите название блюда для поиска.")
+            return
+            
+        found_recipes = []
+        
+        for name, recipe in SAMPLE_RECIPES.items():
+            if search_query in name.lower():
+                found_recipes.append(name)
+        
+        if found_recipes:
+            keyboard = types.InlineKeyboardMarkup(row_width=1)
+            text = "🔍 Найдены следующие рецепты:\n\n"
+            for recipe in found_recipes:
+                text += f"• {recipe}\n"
+                keyboard.add(types.InlineKeyboardButton(recipe, callback_data=f"recipe_{recipe}"))
+            keyboard.add(types.InlineKeyboardButton("« Назад", callback_data="back"))
+            bot.send_message(message.chat.id, text, reply_markup=keyboard)
+        else:
+            keyboard = types.InlineKeyboardMarkup()
+            keyboard.add(types.InlineKeyboardButton("« Назад", callback_data="back"))
+            bot.send_message(
+                message.chat.id,
+                "К сожалению, рецепт не найден. Попробуйте другой запрос!",
+                reply_markup=keyboard
+            )
+    except Exception as e:
+        logger.error(f"Ошибка при поиске рецепта: {e}")
+        keyboard = types.InlineKeyboardMarkup()
+        keyboard.add(types.InlineKeyboardButton("« В главное меню", callback_data="back"))
+        bot.reply_to(
+            message, 
+            "Произошла ошибка при поиске. Вернитесь в главное меню и попробуйте снова.",
+            reply_markup=keyboard
+        )
+
+@bot.message_handler(func=lambda message: True)
+def echo_all(message):
+    """Обработчик всех остальных сообщений"""
+    try:
+        keyboard = types.InlineKeyboardMarkup()
+        keyboard.add(types.InlineKeyboardButton("« В главное меню", callback_data="back"))
+        bot.reply_to(
+            message,
+            "Извините, я вас не понял. Воспользуйтесь кнопками меню или командой /help для справки.",
+            reply_markup=keyboard
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при обработке сообщения: {e}")
+
+def main():
+    """Запуск бота"""
+    try:
+        logger.info("Бот запущен...")
+        bot.polling(none_stop=True, timeout=60)
+    except Exception as e:
+        logger.error(f"Критическая ошибка: {e}")
+        bot.stop_polling()
+    finally:
+        logger.info("Бот остановлен")
+
+if __name__ == '__main__':
+    main() 
