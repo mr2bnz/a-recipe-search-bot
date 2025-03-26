@@ -35,3 +35,5 @@ pip install pyTelegramBotAPI
 BOT_API = 'BOT_TOKEN'
 4. Запуск бота: Для запуска бота используйте команду:
 python main.py
+
+ @receptmerc_bot
